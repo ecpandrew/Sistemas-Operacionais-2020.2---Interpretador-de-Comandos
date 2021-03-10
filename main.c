@@ -3,7 +3,7 @@
 #include <pthread.h>
 #include <unistd.h>
 #include <string.h>
-#define LINE_MAX_LENGTH 200
+#include <pthread.h>
 
 
 
@@ -59,27 +59,44 @@ void tokenizer(char *str){
 
 
 
-
-
 }
 
 
-void readCommand(){
-    printf("\n> ");
+
+void* readCommand(void* p){
+
     char *s = gline();
-    if(!s)
-        puts("Error reading line");
-    else{
-        tokenizer(s);
+    char *error = "error";
+
+    if(!s){
+        pthread_exit(&error);
+    }else{
+        pthread_exit(s);
     }
-    free(s);
 }
 
-int main(int argc, char *argv[]) {
+int main(void){
+    // Declare variable for thread's ID:
+    pthread_t id;
 
     int stop = 0;
-//    char dir[120];
-//    char command;
+    while (!stop){
+        printf("\n> ");
+        pthread_create(&id, NULL, readCommand, &stop);
+
+        char* ptr[120];
+
+        // Wait for foo() and retrieve value in ptr;
+        pthread_join(id, (void**)&ptr);
+
+        printf("\n>>>>>> %s\n", *ptr);
+
+    }
+
+}
+
+
+void prinfHelp(){
     printf("------ Command Interpreter ------");
     printf("\nHELP");
     printf("\nCLEAR");
@@ -89,61 +106,4 @@ int main(int argc, char *argv[]) {
     printf("\nMORE <file>");
     printf("\nGREP <string>");
     printf("\n---------------------------------");
-
-    while (!stop){
-
-        readCommand();
-
-        stop = 1;
-    }
-    return 0;
-
 }
-
-
-
-//int main(int argc, char *argv[]) {
-//
-//    int number_of_threads = 2;
-//    pthread_t threads[number_of_threads];
-//    int status, i;
-//
-//    for (i=0; i < number_of_threads; i++){
-//        printf("Main here. Creating thread %d", i);
-//        status = pthread_create(&threads[i], NULL,print_hello_thread, (void *)i );
-//
-//        if(status != 0){
-//            printf("Oops. pthread_create returned error code %d", status);
-//            exit(-1);
-//        }
-//    }
-//
-//
-//    exit(NULL);
-//}
-
-//int main(){
-//    int p, f;
-//    int rw_setup[2];
-//    char message[20];
-//
-//    p = pipe(rw_setup);
-//    if(p < 0){
-//        printf("An error occured. Could not create the pipe.");
-//        _exit(1);
-//    }
-//    f = fork();
-//    if(f > 0){
-//        write(rw_setup[1], "Hi from Parent", 15);
-//    }
-//    else if(f == 0){
-//        int r_return = read(rw_setup[0],message,15);
-//        printf("%s %d\n", message, r_return);
-//    }
-//    else{
-//        printf("Could not create the child process");
-//    }
-//    return 0;
-//
-//}
-
