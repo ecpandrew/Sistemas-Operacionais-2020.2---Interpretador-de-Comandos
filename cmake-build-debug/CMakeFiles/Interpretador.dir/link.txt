@@ -1,0 +1,1 @@
+/usr/bin/cc -g  -Wl,--enable-auto-import CMakeFiles/Interpretador.dir/main.c.o  -o Interpretador.exe -Wl,--out-implib,libInterpretador.dll.a -Wl,--major-image-version,0,--minor-image-version,0 
