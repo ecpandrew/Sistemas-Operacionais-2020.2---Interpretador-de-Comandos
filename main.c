@@ -4,9 +4,13 @@
 #include <unistd.h>
 #include <string.h>
 #include <pthread.h>
+#include <sys/wait.h>
 
 
-
+int pwd();
+int ls();
+void printHelp();
+void handlePipe(char str);
 char *gline() {
     char *buffer;
 
@@ -17,8 +21,7 @@ char *gline() {
 
     char *s = buffer;
 
-    // step-1 is not strictly necessary, but some implementations of fgets
-    // are buggy. That's why it's step-1 instead of just step
+
     while(fgets(s, step-1, stdin)) {
         if(strchr(s, '\n')) break;
         size += step;
@@ -35,11 +38,70 @@ char *gline() {
 }
 
 
-void tokenizer(char *str){
+#define READ 0
+#define WRITE 1
+
+int executePipe(char** args1,char** args2){
+    int pipettes[2];
+    pid_t p1, p2;
+
+    //Chama o pipe
+    if(pipe(pipettes) < 0){
+        perror("simple_shell");
+        return 0;
+    }
+
+    p1 = fork();
+    if(p1 < 0){
+        perror("simple_shell");
+    }else if(p1 == 0){
+        //Processo filho executando
+        close(pipettes[READ]);
+        dup2(pipettes[WRITE], STDOUT_FILENO);
+        close(pipettes[WRITE]);
+
+        if(execvp(args1[0], args1) < 0){
+            perror("simple_shell");
+        }
+    }else{
+        //Processo pai executando
+        p2 = fork();
+
+        if(p2 < 0){
+            perror("simple_shell");
+        }else if(p2 == 0){
+            //Filho 2 executando
+            close(pipettes[WRITE]);
+            dup2(pipettes[READ], STDIN_FILENO);
+            close(pipettes[READ]);
+            if(execvp(args2[0], args2) < 0){
+                perror("simple_shell");
+                return 0;
+            }else{
+                return 1;
+            }
+        }else{
+            //Pai executando
+            wait(NULL);
+        }
+    }
+
+    return 0;
+
+}
+
+
+
+
+
+
+int tokenizer(char *str){
+    char copy_str[150];
+    strcpy(copy_str, str);
 
     char delim[] = " ";
+    char *lista[20]; // use const because we're pointing to literals
 
-    char *lista[10]; // use const because we're pointing to literals
     int index = 0;
 
     char *ptr = strtok(str, delim);
@@ -49,14 +111,113 @@ void tokenizer(char *str){
         lista[index] = ptr;
         index++;
         ptr = strtok(NULL, delim);
+        if(ptr == NULL){
+            lista[index] = NULL;
+        }
+
     }
 
+    int loop_status = 1;
 
-    for(int i = 0 ; i < index; i++)
-    {
-        printf("\n%s ", lista[i]);
+    char* init_command = lista[0];
+    char* args = lista[1];
+    char* pipe = lista[2];
+    char* command2 = lista[3];
+    char* args2 = lista[4];
+
+
+    char* second_command = strchr(copy_str, '|');
+
+    if(second_command != NULL){
+        char *comando1[20];
+        char *comando2[20];
+
+        int index1 = 0;
+        int index2 = 0;
+
+
+        char *ptr2 = strtok(copy_str, delim);
+
+        while(ptr2 != NULL)
+        {
+            if (strcmp(ptr2, "|") == 0){
+                ptr2 = strtok(NULL, delim);
+
+                while(ptr2 != NULL){
+                    comando2[index2] = ptr2;
+                    index2++;
+                    ptr2 = strtok(NULL, delim);
+
+                }
+
+                break;
+            }
+            comando1[index1] = ptr2;
+            index1++;
+            ptr2 = strtok(NULL, delim);
+
+        }
+
+        executePipe(comando1, comando2);
+        loop_status = 1;
+
+//        handlePipe([cd, ..], [ls])
+//        handlePipe([cd, ..], [])
+
+    }else{
+        printf("\n not pipe");
+
+        if(strcmp(init_command, "pwd") == 0){
+            pwd();
+            loop_status = 1;
+        }else if(strcmp(init_command, "exit") == 0){
+            loop_status = 0;
+
+        }else if(strcmp(init_command, "help") == 0){
+            printHelp();
+            loop_status = 1;
+        }else if(strcmp(init_command, "cd") == 0){
+            if(args == NULL){
+                printf("\n>>>> Expected argument <PATH> not found.");
+
+            }else {
+                chdir(args);
+            }
+        }else if(strcmp(init_command, "ls") == 0 |
+                    strcmp(init_command, "grep") == 0 |
+                    strcmp(init_command, "more") == 0){
+
+                pid_t pid, wpid;
+                pid = fork();
+                int status;
+                if(pid == 0){ // success
+                    int temp = execvp(lista[0], lista);
+                    if(temp ==-1){
+                        printf("error");
+                    }
+                    exit(EXIT_FAILURE);
+                }else if (pid < 0){
+                    printf("error no fork");
+
+                }
+                else{
+                    do{
+
+                        wpid = waitpid(pid, &status, WUNTRACED);
+                    }while(!WIFEXITED(status) && !WIFSIGNALED(status));
+
+                }
+
+            }else{
+                printf("\n>>>> command '%s' not recognized by this interpreter",lista[0] );
+
+
+
+
+        }
+
     }
-
+    return loop_status;
 
 
 }
@@ -75,34 +236,62 @@ void* readCommand(void* p){
     }
 }
 
+int pwd(){
+    char dir[450];
+    getcwd(dir, 450);
+    printf("\n>>>> %s\n", dir);
+    return 1;
+}
+
+int print_current_dir(){
+    char dir[450];
+
+    getcwd(dir, 450);
+    printf("\n %s > ", dir);
+    return 1;
+}
+
 int main(void){
     // Declare variable for thread's ID:
     pthread_t id;
 
     int stop = 0;
     while (!stop){
-        printf("\n> ");
+        print_current_dir();
+
+
         pthread_create(&id, NULL, readCommand, &stop);
 
-        char* ptr[120];
+        char* command[120];
 
         // Wait for foo() and retrieve value in ptr;
-        pthread_join(id, (void**)&ptr);
+        pthread_join(id, (void**)&command);
 
-        printf("\n>>>>>> %s\n", *ptr);
+        if(strcmp(*command, "error") == 0){
+            printf("\n>>>>>> Error: %s", *command);
+
+        }else{
+            int status = tokenizer(*command);
+            if(status == 0){
+                printf("\n>>>>>> Exiting Interpreter");
+                break;
+            }
+        }
+
 
     }
 
+    return 0;
 }
 
 
-void prinfHelp(){
-    printf("------ Command Interpreter ------");
+void printHelp(){
+    printf("\n------ Command Interpreter ------");
     printf("\nHELP");
-    printf("\nCLEAR");
+    printf("\nEXIT");
     printf("\nPWD");
-    printf("\nCD <path>");
     printf("\nLS");
+    printf("\nCD <path>");
     printf("\nMORE <file>");
     printf("\nGREP <string>");
     printf("\n---------------------------------");
